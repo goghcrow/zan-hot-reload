@@ -18,7 +18,7 @@ sudo /Applications/PhpStorm.app/Contents/MacOS/phpstorm
 
 **最终效果**：
 
-可以实时修改src目录代码，实时生效
+以非常低的系统资源占用，实现实时修改src目录代码，代码实时生效
 
 
 **附**：
