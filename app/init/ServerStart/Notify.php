@@ -8,6 +8,7 @@ use Zan\Framework\Foundation\Application;
 use Zan\Framework\Foundation\Core\RunMode;
 use Zan\Framework\Contract\Network\Bootable;
 use Zan\Framework\Network\Http\Server;
+use Zan\Framework\Store\Database\Sql\SqlMapInitiator;
 
 /**
  * Created by PhpStorm.
@@ -32,6 +33,9 @@ class Notify implements Bootable
 
         $server->swooleServer->on('workerStart', function(\swoole_server $swServer, $workerId) use($server) {
             $server->onWorkerStart($swServer, $workerId);
+
+            // worker start 阶段sqlmap
+            SqlMapInitiator::getInstance()->init();
 
             $this->path = Application::getInstance()->getAppPath();
             // Loader::getInstance()->load($this->path); // BUG
@@ -61,10 +65,16 @@ class Notify implements Bootable
         } else {
             $fp = fsev_open();
             $appPath = Application::getInstance()->getAppPath();
+            $sqlPath = Path::getSqlPath();
+
             while(true) {
                 $data = fread($fp, 8192);
                 $changeFiles = fsev_decode($data);
                 foreach ($changeFiles as $file) {
+                    if (strrpos($file, $sqlPath, -strlen($file)) !== false) {
+                        break 2;
+                    }
+                    
                     if (strrpos($file, $appPath, -strlen($file)) !== false) {
                         break 2;
                     }
