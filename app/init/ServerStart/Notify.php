@@ -5,19 +5,12 @@ use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use RegexIterator;
 use Zan\Framework\Foundation\Application;
+use Zan\Framework\Foundation\Core\Path;
 use Zan\Framework\Foundation\Core\RunMode;
 use Zan\Framework\Contract\Network\Bootable;
 use Zan\Framework\Network\Http\Server;
 use Zan\Framework\Store\Database\Sql\SqlMapInitiator;
 
-/**
- * Created by PhpStorm.
- * User: chuxiaofeng
- * Date: 16/8/16
- * Time: 下午11:25
- *
- * TODO: fix WARNING	swReactorKqueue_wait: Kqueue[#0] Error: Bad file descriptor[9]
- */
 class Notify implements Bootable
 {
     private $path;
@@ -31,14 +24,13 @@ class Notify implements Bootable
             return;
         }
 
-        $server->swooleServer->on('workerStart', function(\swoole_server $swServer, $workerId) use($server) {
+        $server->swooleServer->on("workerStart", function(\swoole_server $swServer, $workerId) use($server) {
             $server->onWorkerStart($swServer, $workerId);
 
             // worker start 阶段sqlmap
             SqlMapInitiator::getInstance()->init();
 
             $this->path = Application::getInstance()->getAppPath();
-            // Loader::getInstance()->load($this->path); // BUG
             foreach (static::iter($this->path) as $file => $matches) {
                 include_once $file;
             }
@@ -52,6 +44,13 @@ class Notify implements Bootable
             } else {
                 $this->init();
                 $this->monitor($swServer);
+            }
+        });
+
+        $server->swooleServer->on("workerStop", function(\swoole_server $swServer, $workerId) use($server) {
+            $server->onWorkerStop($swServer, $workerId);
+            if (function_exists("opcache_reset")) {
+                opcache_reset();
             }
         });
     }
@@ -74,7 +73,7 @@ class Notify implements Bootable
                     if (strrpos($file, $sqlPath, -strlen($file)) !== false) {
                         break 2;
                     }
-                    
+
                     if (strrpos($file, $appPath, -strlen($file)) !== false) {
                         break 2;
                     }
@@ -94,7 +93,7 @@ class Notify implements Bootable
             }
         });
     }
-    
+
     private function init() {
         foreach (static::iter($this->path) as $file => $matches) {
             $stat = stat($file);
@@ -104,14 +103,14 @@ class Notify implements Bootable
             ];
         }
     }
-    
+
     private function diff() {
         $ret = false;
         foreach (static::iter($this->path) as $file => $matches) {
             $stat = stat($file);
             $isChange = !isset($this->fileStat[$file]) ||
-                    $stat["size"] !== $this->fileStat[$file]["size"] ||
-                    $stat["mtime"] !== $this->fileStat[$file]["mtime"];
+                $stat["size"] !== $this->fileStat[$file]["size"] ||
+                $stat["mtime"] !== $this->fileStat[$file]["mtime"];
             if ($isChange) {
                 $this->fileStat[$file] = [
                     "size" => $stat["size"],

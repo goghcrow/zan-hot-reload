@@ -29,7 +29,10 @@ use swoole_server as SwooleTcpServer;
 class YourApp extends Application
 {
     protected function bootstrap() {
+        // parent::bootstrap();
+
         $this->setContainer();
+
         $this->loadFrameworkFiles();
 
         $bootstrapItems = [
@@ -42,7 +45,6 @@ class YourApp extends Application
             InitializeSharedObjects::class,
             RegisterClassAliases::class,
             // LoadFiles::class,
-            // src文件延迟到workerstart阶段加载
             InitializeCache::class,
             InitializeKv::class,
         ];
@@ -61,11 +63,37 @@ class YourApp extends Application
             // $basePath . '/src',
         ];
 
+        $except = [
+            realpath($basePath . "/vendor/zanphp/zan/src/Foundation/View/Pages/Error.php") => true,
+            realpath($basePath . "/vendor/zanphp/zan/src/Network/Tcp/Client.php") => true,
+            realpath($basePath . "/vendor/zanphp/zan/src/Utilities/Types/Fluent.php") => true,
+            realpath($basePath . "/vendor/zanphp/zan/src/Foundation/View/Pagelet/Component/ComponentAbstract.php") => true,
+        ];
+
+
         foreach ($paths as $path) {
             foreach (Notify::iter($path) as $file => $matches) {
-                @include_once $file;
+                if (isset($except[$file])) {
+                    unset($except[$file]);
+                    continue;
+                }
+                include_once $file;
             }
         }
+    }
+
+    private function dontLoadSql($server) {
+        $refServer = new \ReflectionObject($server);
+        $refProp = $refServer->getProperty("serverStartItems");
+        $refProp->setAccessible(true);
+        $items = $refProp->getValue($server);
+        foreach ($items as $i => $item) {
+            if ($item === InitializeSqlMap::class) {
+                unset($items[$i]);
+                break;
+            }
+        }
+        $refProp->setValue($server, $items);
     }
 
     public function createTcpServer() {
@@ -85,17 +113,7 @@ class YourApp extends Application
         $server = Di::make(TcpServer::class, [$swooleServer, $config]);
 
         if (strtolower(RunMode::get()) === "test") {
-            $refServer = new \ReflectionObject($server);
-            $refProp = $refServer->getProperty("serverStartItems");
-            $refProp->setAccessible(true);
-            $items = $refProp->getValue($server);
-            foreach ($items as $i => $item) {
-                if ($item === InitializeSqlMap::class) {
-                    unset($items[$i]);
-                    break;
-                }
-            }
-            $refProp->setValue($server, $items);
+            $this->dontLoadSql($server);
         }
 
         return $server;
